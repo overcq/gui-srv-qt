@@ -140,6 +140,22 @@ Z_text_field_X_text_changed_Q::handle(
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 static
 void
+Z_signal_V_process_call_req_I_present(
+){  size_t l = 0x1000 - 1;
+    l = ( 2 * sizeof( uint64_t ) + l ) & ~l;
+    shm_id = shmget( IPC_PRIVATE, l, 0600 | IPC_CREAT | IPC_EXCL );
+    if( !~shm_id )
+        exit( EXIT_FAILURE );
+    uint64_t *n = static_cast< uint64_t * >( shmat( shm_id, 0, 0 ));
+    n[0] = 1;
+    n[1] = 0;
+    shmdt(n);
+    union sigval sv;
+    sv.sival_int = shm_id;
+    sigqueue( process_id, SIGUSR1, sv );
+}
+static
+void
 Z_signal_V_process_call_req( int uid
 , siginfo_t *siginfo
 , void *data
@@ -173,7 +189,7 @@ Z_signal_V_process_call_req( int uid
                 QQmlComponent component( &engine );
                 QString s{p};
                 QStringList a = s.split( "ApplicationWindow{" );
-                for( auto i = 1; i < a.size(); i++ )
+                for( auto i = 1; i != a.size(); i++ )
                 {   QString s{ a[0] };
                     s.append( "ApplicationWindow{" ).append( a[i] );
                     component.setData( s.toUtf8(), QUrl() );
@@ -194,6 +210,7 @@ Z_signal_V_process_call_req( int uid
                     }
                     window->show();
                 }
+                QTimer::singleShot( 0, &Z_signal_V_process_call_req_I_present );
                 p += strlen(p) + 1;
                 break;
             }
@@ -247,7 +264,9 @@ Q_application_X_activate(
 ){  size_t l = 0x1000 - 1;
     l = ( 2 * sizeof( uint64_t ) + l ) & ~l;
     shm_id = shmget( IPC_PRIVATE, l, 0600 | IPC_CREAT | IPC_EXCL );
-    uint64_t *n = ( uint64_t * )shmat( shm_id, 0, 0 );
+    if( !~shm_id )
+        exit( EXIT_FAILURE );
+    uint64_t *n = static_cast< uint64_t * >( shmat( shm_id, 0, 0 ));
     n[0] = 1;
     n[1] = 0;
     shmdt(n);
@@ -282,7 +301,7 @@ main( int argc
 import QtQuick.Controls
 import QtQuick.Window
 ApplicationWindow{visible:true}
-    )";
+)";
     component.setData( s.toUtf8(), QUrl() );
     if( component.isReady() )
     {   Z_gtk_Q_main_window = qobject_cast<QQuickWindow*>( component.create() );
